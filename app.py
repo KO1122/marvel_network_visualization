@@ -11,11 +11,18 @@ from bokeh.plotting import figure
 from bokeh.plotting import from_networkx
 from bokeh.io import output_notebook
 import streamlit as st
+import folium
+import numpy as np
+import geopandas as gpd
+from shapely.ops import cascaded_union
+from geovoronoi import voronoi_regions_from_coords, points_to_coords
+from streamlit_folium import folium_static
+
 st.set_option('deprecation.showPyplotGlobalUse', False)
 
 st.title('Network Visualization of Marvel Characters')
 st.sidebar.title("Network View")
-add_selectbox = st.sidebar.radio("",("Marvel Network", "Karate Network", "Facebook Network"))
+add_selectbox = st.sidebar.radio("",("Marvel Network", "Karate Network", "Facebook Network", "QC Voronoi Plot"))
 
 if add_selectbox == "Marvel Network":
     sb_communities = st.selectbox("Communities",(0, 1, 2, 3))
@@ -152,7 +159,7 @@ elif add_selectbox == "Karate Network":
     fig = nx.draw(subnetwork, pos=pos, node_color = sb_color, with_labels=True)
     st.pyplot(fig)
 
-else:
+elif add_selectbox == "Facebook Network":
 
     sb_communities = st.selectbox("Communities",('blue', 'orange', 'red'))
     G = nx.read_adjlist('facebook_social_graph.adjlist')
@@ -204,3 +211,31 @@ else:
 
     plot.renderers.append(graph_renderer)
     st.bokeh_chart(plot)
+
+else:
+
+    ph_2 = gpd.read_file('./gadm36_PHL_shp/gadm36_PHL_2.shp')
+    df_final_point = pd.read_csv("df_final_point.csv")
+    df_final_point['geometry'] = gpd.GeoSeries.from_wkt(df_final_point['geometry'])
+    qc_area = ph_2[ph_2['NAME_2'] == 'Quezon City']
+    boundary_shape = cascaded_union(qc_area.geometry)
+    coords = points_to_coords(df_final_point.geometry)
+
+    poly_shapes, poly_to_pt_assignments = voronoi_regions_from_coords(coords, boundary_shape)
+
+    m = folium.Map([14.67428, 121.05750], zoom_start=11, tiles='cartodbpositron')
+
+    #draw the voronoi diagram within coverage area
+    for x in range(len(poly_shapes)):
+        folium.GeoJson(poly_shapes[x]).add_to(m)
+
+    #draw the data points
+    points = [[geom.xy[1][0], geom.xy[0][0]] for geom in df_final_point.geometry]
+    locs = points
+    for location in locs:
+        folium.CircleMarker(location=location, 
+        color = "#4925a2", radius=0.01).add_to(m)
+
+    folium_static(m)
+
+    
